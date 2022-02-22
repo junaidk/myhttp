@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto"
 	"flag"
 	"fmt"
 	"myhttp/lib"
@@ -22,6 +23,7 @@ func main() {
 	proc := lib.NewProcessor(
 		&http.Client{Timeout: time.Second * 5},
 		*parallelCount,
+		crypto.MD5,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())

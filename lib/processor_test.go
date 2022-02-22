@@ -3,6 +3,7 @@ package lib
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -34,7 +35,7 @@ func TestHttpRequest(t *testing.T) {
 		"http://www.google.com": "OK",
 	}
 
-	processor := NewProcessor(client, 1)
+	processor := NewProcessor(client, 1, crypto.MD5)
 	resp, err := processor.httpRequest(context.Background(), "http://www.google.com")
 
 	if err != nil {
@@ -53,7 +54,10 @@ func TestHttpRequest(t *testing.T) {
 
 func TestGetMD5Hash(t *testing.T) {
 	r := strings.NewReader("my request")
-	hash, err := getMD5Hash(r)
+
+	p := NewProcessor(nil, 1, crypto.MD5)
+
+	hash, err := p.getHash(r)
 	if err != nil {
 		t.Errorf("Error: %s", err)
 	}
@@ -94,27 +98,41 @@ func TestProcessor_Run(t *testing.T) {
 
 	client := &MockClient{}
 	client.ReqMap = map[string]string{
+		"":                          "",
 		"http://www.google.com":     "response1",
 		"http://www.microsoft.com/": "response2",
-		"http://www.azure.com/":     "response3",
+		"http://www.url1.com/":      "response3",
+		"https://www.url2.com/":     "response4",
+		"http://www.url3.com/":      "response5",
+		"http://www.url4.com/":      "response6",
+		"www.url6.com/":             "response7",
 	}
 
-	processor := NewProcessor(client, 5)
+	processor := NewProcessor(client, 5, crypto.MD5)
 
-	var b bytes.Buffer
-	processor.Run(context.Background(), []string{"http://www.google.com", "http://www.microsoft.com/", "http://www.azure.com/"}, &b)
+	var input []string
+	for k := range client.ReqMap {
+		input = append(input, k)
+	}
+
+	var output bytes.Buffer
+	processor.Run(context.Background(), input, &output)
 
 	expected := []string{
-		"http://www.google.com d20a5df8f659a0af0f08de8da34fe8bc",
-		"http://www.azure.com/ bd6e19d229662b5e48a358e0ec493921",
+		"http://www.url6.com/ 9d1ead73e678fa2f51a70a933b0bf017",
 		"http://www.microsoft.com/ 6d8aa682668fbd4a324aa5299495cc69",
+		"http://www.url1.com/ bd6e19d229662b5e48a358e0ec493921",
+		"https://www.url2.com/ 3f432a4e962dbb22edc256518abfcaf0",
+		"http://www.url4.com/ d6905a9e1498e031293b22e71b6dd795",
+		"http://www.url3.com/ 0b1a1bade2c3c3e463a96b3f17f6a490",
+		"http://www.google.com d20a5df8f659a0af0f08de8da34fe8bc",
 	}
+	_ = expected
 
-	resp := b.String()
+	resp := output.String()
 	for _, exp := range expected {
 		if !strings.Contains(resp, exp) {
 			t.Errorf("Not found: %s", exp)
 		}
 	}
-
 }

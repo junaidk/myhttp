@@ -2,7 +2,7 @@ package lib
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -18,9 +18,10 @@ type HTTPClient interface {
 }
 
 type Processor struct {
-	HttpClient    HTTPClient
-	ParallelCount int
+	httpClient    HTTPClient
+	parallelCount int
 	wg            *sync.WaitGroup
+	hashAlgo      crypto.Hash
 }
 
 type Result struct {
@@ -32,11 +33,12 @@ func (res *Result) String() string {
 	return fmt.Sprintf("%s %s\n", res.Url, res.MD5Hash)
 }
 
-func NewProcessor(httpClient HTTPClient, parallelCount int) *Processor {
+func NewProcessor(httpClient HTTPClient, parallelCount int, hashAlgo crypto.Hash) *Processor {
 	return &Processor{
-		HttpClient:    httpClient,
-		ParallelCount: parallelCount,
+		httpClient:    httpClient,
+		parallelCount: parallelCount,
 		wg:            &sync.WaitGroup{},
+		hashAlgo:      crypto.MD5,
 	}
 }
 
@@ -46,7 +48,7 @@ func (p *Processor) Run(ctx context.Context, urls []string, output io.Writer) {
 	jobs := make(chan string, len(urls))
 	results := make(chan Result, len(urls))
 
-	for w := 1; w <= p.ParallelCount; w++ {
+	for w := 1; w <= p.parallelCount; w++ {
 		p.wg.Add(1)
 		go p.worker(ctx, jobs, results)
 	}
@@ -77,7 +79,7 @@ func (p *Processor) worker(ctx context.Context, jobs <-chan string, results chan
 		if err != nil {
 			continue
 		}
-		md5sum, err := p.getMD5sumFromRequest(ctx, url)
+		md5sum, err := p.getHashFromRequest(ctx, url)
 
 		if err == nil {
 			results <- Result{Url: url, MD5Hash: md5sum}
@@ -85,15 +87,15 @@ func (p *Processor) worker(ctx context.Context, jobs <-chan string, results chan
 	}
 }
 
-// getMD5sumFromRequest returns the md5sum of the response body
-func (p *Processor) getMD5sumFromRequest(ctx context.Context, url string) (md5sum string, err error) {
+// getHashFromRequest returns the md5sum of the response body
+func (p *Processor) getHashFromRequest(ctx context.Context, url string) (md5sum string, err error) {
 	resp, err := p.httpRequest(ctx, url)
 	if err != nil {
 		return
 	}
 	defer resp.Close()
 
-	md5sum, err = getMD5Hash(resp)
+	md5sum, err = p.getHash(resp)
 	if err != nil {
 		return
 	}
@@ -106,16 +108,17 @@ func (p *Processor) httpRequest(ctx context.Context, url string) (io.ReadCloser,
 	if err != nil {
 		return nil, err
 	}
-	resp, err := p.HttpClient.Do(req.WithContext(ctx))
+	resp, err := p.httpClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}
 	return resp.Body, nil
 }
 
-// getMD5Hash get the md5 hash from io.reader
-func getMD5Hash(data io.Reader) (string, error) {
-	hash := md5.New()
+// getHash get the hash from io.reader
+func (p *Processor) getHash(data io.Reader) (string, error) {
+	hash := p.hashAlgo.New()
+
 	_, err := io.Copy(hash, data)
 	if err != nil {
 		return "", err
