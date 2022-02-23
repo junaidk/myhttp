@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	urllib "net/url"
 	"strings"
 	"sync"
 )
@@ -38,7 +38,7 @@ func NewProcessor(httpClient HTTPClient, parallelCount int, hashAlgo crypto.Hash
 		httpClient:    httpClient,
 		parallelCount: parallelCount,
 		wg:            &sync.WaitGroup{},
-		hashAlgo:      crypto.MD5,
+		hashAlgo:      hashAlgo,
 	}
 }
 
@@ -83,7 +83,11 @@ func (p *Processor) worker(ctx context.Context, jobs <-chan string, results chan
 
 		if err == nil {
 			results <- Result{Url: url, MD5Hash: md5sum}
-		}
+		} //else {
+		//  // print error to stderr. We can also use Err channel to send errors to the main thread
+		//  // but this is not explicitly required for this implementation
+		// 	fmt.Printf("Error: %s\n", err)
+		//}
 	}
 }
 
@@ -131,14 +135,14 @@ func validateAndModifyUrl(urlStr string) (string, error) {
 	if urlStr == "" {
 		return "", fmt.Errorf("url is empty")
 	}
-	u, err := url.Parse(urlStr)
+	url, err := urllib.Parse(urlStr)
 	if err != nil {
 		return "", fmt.Errorf("invalid url: %s", urlStr)
 	}
-	if err == nil && u.Scheme == "" {
+	if err == nil && url.Scheme == "" {
 		return "http://" + urlStr, nil
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
+	if url.Scheme != "http" && url.Scheme != "https" {
 		return "", fmt.Errorf("invalid url: %s", urlStr)
 	}
 	return urlStr, nil

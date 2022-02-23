@@ -21,7 +21,7 @@ func main() {
 	urlList := flag.Args()
 
 	proc := lib.NewProcessor(
-		&http.Client{Timeout: time.Second * 5},
+		&http.Client{Timeout: time.Second * 10},
 		*parallelCount,
 		crypto.MD5,
 	)
